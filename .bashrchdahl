@@ -1,0 +1,58 @@
+
+## Uncomment the two cmds and paste this block in your .bashrc or equiv. ###
+# Path to hdahlcontiki repo (update to reflect your setup)
+#hdahlpathprefix=~/workspace
+
+# Do not touch
+#source $hdahlpathprefix/hdahlcontiki/.bashrchdahl
+##################### END BLOCK ############################################
+
+# Clean, build ota, flash using Uniflash4.2 via XDS110(TI Launchpad)
+ngmake()
+{
+        ngmakeclean
+        ngmakeLaunchpadXDS110 "hdahl.hex"
+}
+
+# Clean
+ngmakeclean()
+{
+        make -C $hdahlpathprefix/hdahlcontiki/hdahlapp clean || { echo "######################## CLEAN FAILED ######################"; return; }
+        echo "############### CLEAN SUCCESSFUL #########################";
+}
+
+ngmakeLaunchpadXDS110()
+{
+        set -o pipefail
+        echo "############## HDAHLMAKE ###################";
+        echo -n "Timestamp: ";
+        date;
+       echo "############## STARTING COMPILATION #######################";
+        make -j 4 -C $hdahlpathprefix/hdahlcontiki/hdahlapp || { echo "######################## COMPILING FAILED ######################"; return; }
+        echo "############## COMPILATION SUCCESSFUL #####################";
+
+        echo "############## TRANSFER TO TARGET #########################";
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
+
+	echo "############## VERIFY #########################";
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e -v $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
+
+        echo "############## TRANSFER AND VERIFICATION SUCCESSFUL ########################";
+        #hdahlsrf13reset
+        echo -n "Timestamp: ";
+        date;
+        echo "############## HDAHLMAKE $1 SUCCESSFUL ########################";
+}
+
+# Reset board using Uniflash
+ngresetLaunchpadXDS110()
+{
+  echo "############## HDAHLRESET  #########################";
+  echo -n "Timestamp: ";
+        date;
+  echo "############## RESET TARGET #########################";
+	sudo /opt/ti/uniflash_4.2/ccs_base/scripting/examples/uniflash/cmdLine/uniflash.sh -ccxml $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -targetOp reset || { echo "############## RESET TARGET FAILED ###########"; return; }
+        echo "############## RESET SUCCESSFUL #########################";
+}
+
+
