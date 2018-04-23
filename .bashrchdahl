@@ -11,7 +11,7 @@
 ngmake()
 {
         ngmakeclean
-        ngmakeLaunchpadXDS110 "hdahl.hex"
+        ngmakeDebuggerXDS110 "hello-hdahl.hex"
 }
 
 # Clean
@@ -51,8 +51,29 @@ ngresetLaunchpadXDS110()
   echo -n "Timestamp: ";
         date;
   echo "############## RESET TARGET #########################";
-	sudo /opt/ti/uniflash_4.2/ccs_base/scripting/examples/uniflash/cmdLine/uniflash.sh -ccxml $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -targetOp reset || { echo "############## RESET TARGET FAILED ###########"; return; }
+	sudo /opt/ti/uniflash_4.2/ccs_base/scripting/examples/unsiflash/cmdLine/uniflash.sh -ccxml $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -targetOp reset || { echo "############## RESET TARGET FAILED ###########"; return; }
         echo "############## RESET SUCCESSFUL #########################";
 }
 
+ngmakeDebuggerXDS110()
+{
+        set -o pipefail
+        echo "############## HDAHLMAKE :: DEBUGGER ###################";
+        echo -n "Timestamp: ";
+        date;
+       echo "############## STARTING COMPILATION #######################";
+        make -j 4 -C $hdahlpathprefix/hdahlcontiki/hdahlapp || { echo "######################## COMPILING FAILED ######################"; return; }
+        echo "############## COMPILATION SUCCESSFUL #####################";
 
+        echo "############## TRANSFER TO TARGET #########################";
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
+
+	echo "############## VERIFY #########################";
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e -v $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
+
+        echo "############## TRANSFER AND VERIFICATION SUCCESSFUL ########################";
+        #hdahlsrf13reset
+        echo -n "Timestamp: ";
+        date;
+        echo "############## HDAHLMAKE $1 SUCCESSFUL ########################";
+}

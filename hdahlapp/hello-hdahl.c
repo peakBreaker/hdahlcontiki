@@ -54,7 +54,7 @@ PROCESS_THREAD(hello_world_process, ev, data)
   etimer_set(&et, CLOCK_SECOND);
 
   while (1) {
-    printf("Hello, world\n");
+    printf("Hello, hdahl!\n");
 
     PROCESS_YIELD();
 
