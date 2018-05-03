@@ -1,4 +1,4 @@
-CONTIKI_PROJECT = hello-hdahl
+CONTIKI_PROJECT = application
 all: $(CONTIKI_PROJECT)
 
 TARGET=srf06-cc26xx
@@ -10,6 +10,8 @@ ifeq ($(BOARD), sensortag/cc2650)
 else
 	CFLAGS += -DBOARD_CONF_DEBUGGER_DEVPACK=0
 endif
+
+MODULES += os/services/shell
 
 CONTIKI = ../contiki-ng/
 include $(CONTIKI)/Makefile.include

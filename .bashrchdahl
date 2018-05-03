@@ -1,7 +1,7 @@
 
 ## Uncomment the two cmds and paste this block in your .bashrc or equiv. ###
 # Path to hdahlcontiki repo (update to reflect your setup)
-#hdahlpathprefix=~/workspace
+hdahlpathprefix=~/Documents/sensario/embedded/contiki-ng/
 
 # Do not touch
 #source $hdahlpathprefix/hdahlcontiki/.bashrchdahl
@@ -10,14 +10,56 @@
 # Clean, build ota, flash using Uniflash4.2 via XDS110(TI Launchpad)
 ngmake()
 {
-        ngmakeclean
-        ngmakeDebuggerXDS110 "hello-hdahl.hex"
+        if [ -z $1 ]; then
+           APP=hdahlapp
+        else
+           APP=$1
+        fi
+
+        ngmakeclean $APP
+        ngmakeDebuggerXDS110 "application.hex" $APP
+}
+
+nglogin()
+{
+        # Get the optional interface arg
+        if [ -z $1 ]; then
+           INTERFACE=/dev/ttyACM0
+        else
+           INTERFACE=$1
+        fi
+
+        # Connect to device
+        $hdahlpathprefix/hdahlcontiki/contiki-ng/tools/sky/serialdump-linux $INTERFACE
+}
+
+ngconnectrouter()
+{
+        echo "######### CONNECTING ROUTER ############"
+
+
+        # Get the optional interface arg
+        if [ -z $1 ]; then
+           INTERFACE=/dev/ttyACM0
+        else
+           INTERFACE=$1
+        fi
+
+        # Connect to the router
+        sudo $hdahlpathprefix/hdahlcontiki/contiki-ng/tools/tunslip6 fd00::1/64 -s $INTERFACE
+}
+
+ngmakerouter()
+{
+        echo "########## BUILDING ROUTER #############"
+        ngmakeclean hdahlrouter
+        ngmakeDebuggerXDS110 "border-router.hex" hdahlrouter
 }
 
 # Clean
 ngmakeclean()
 {
-        make -C $hdahlpathprefix/hdahlcontiki/hdahlapp clean || { echo "######################## CLEAN FAILED ######################"; return; }
+        make -C $hdahlpathprefix/hdahlcontiki/$1 clean || { echo "######################## CLEAN FAILED ######################"; return; }
         echo "############### CLEAN SUCCESSFUL #########################";
 }
 
@@ -28,14 +70,14 @@ ngmakeLaunchpadXDS110()
         echo -n "Timestamp: ";
         date;
        echo "############## STARTING COMPILATION #######################";
-        make -j 4 -C $hdahlpathprefix/hdahlcontiki/hdahlapp || { echo "######################## COMPILING FAILED ######################"; return; }
+        make -j 4 -C $hdahlpathprefix/hdahlcontiki/$2 || { echo "######################## COMPILING FAILED ######################"; return; }
         echo "############## COMPILATION SUCCESSFUL #####################";
 
         echo "############## TRANSFER TO TARGET #########################";
-	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e $hdahlpathprefix/hdahlcontiki/$2/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
 
 	echo "############## VERIFY #########################";
-	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e -v $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128.ccxml -e -v $hdahlpathprefix/hdahlcontiki/$2/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
 
         echo "############## TRANSFER AND VERIFICATION SUCCESSFUL ########################";
         #hdahlsrf13reset
@@ -55,6 +97,7 @@ ngresetLaunchpadXDS110()
         echo "############## RESET SUCCESSFUL #########################";
 }
 
+# Flash using the debugger pack
 ngmakeDebuggerXDS110()
 {
         set -o pipefail
@@ -62,18 +105,19 @@ ngmakeDebuggerXDS110()
         echo -n "Timestamp: ";
         date;
        echo "############## STARTING COMPILATION #######################";
-        make -j 4 -C $hdahlpathprefix/hdahlcontiki/hdahlapp || { echo "######################## COMPILING FAILED ######################"; return; }
+        make -j 4 -C $hdahlpathprefix/hdahlcontiki/$2 || { echo "######################## COMPILING FAILED ######################"; return; }
         echo "############## COMPILATION SUCCESSFUL #####################";
 
         echo "############## TRANSFER TO TARGET #########################";
-	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e $hdahlpathprefix/hdahlcontiki/$2/$1 || { echo "############## TRANSFER TO TARGET FAILED ###########"; return; }
 
 	echo "############## VERIFY #########################";
-	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e -v $hdahlpathprefix/hdahlcontiki/hdahlapp/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
+	/opt/ti/uniflash_4.2/dslite.sh --mode flash --config $hdahlpathprefix/hdahlcontiki/CC2650F128_Debugger.ccxml -e -v $hdahlpathprefix/hdahlcontiki/$2/$1 || { echo "############## VERIFICATION FAILED ###########"; return; }
 
         echo "############## TRANSFER AND VERIFICATION SUCCESSFUL ########################";
         #hdahlsrf13reset
         echo -n "Timestamp: ";
         date;
         echo "############## HDAHLMAKE $1 SUCCESSFUL ########################";
+
 }
