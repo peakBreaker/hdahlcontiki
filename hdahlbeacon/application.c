@@ -109,8 +109,28 @@
 #if BOARD_SENSORTAG
 #define CC26XX_DEMO_TRIGGER_3     BOARD_BUTTON_HAL_INDEX_REED_RELAY
 #endif
+
+/* BLE Intervals: Send a burst of advertisements every BLE_ADV_INTERVAL secs */
+#define BLE_ADV_DUTY_CYCLE    (CLOCK_SECOND / 10)
+#define BLE_ADV_MESSAGES            10
+
+/* BLE advertisement Macros */
+#define HD_BLE_ADV_PAYLOAD_LEN 64
+#define ADV_SENSOR_DATA_BASE "{'temp' : %i}"
+#define ADV_NAME_BASE "Anders_%i"
+#define BLE_ADV_TYPE_DEVINFO      0x01
+#define BLE_ADV_TYPE_NAME         0x09
+#define BLE_ADV_TYPE_MANUFACTURER 0xFF
+#define BLE_ADV_NAME_BUF_LEN        BLE_ADV_MAX_SIZE
+#define BLE_ADV_PAYLOAD_BUF_LEN     64
+#define BLE_UUID_SIZE               16
+
 /*---------------------------------------------------------------------------*/
 static struct etimer et;
+static struct etimer adv_et;
+static uint8_t payload[HD_BLE_ADV_PAYLOAD_LEN];
+static int p = 0;
+static int i;
 /*---------------------------------------------------------------------------*/
 PROCESS(cc26xx_demo_process, "cc26xx demo process");
 AUTOSTART_PROCESSES(&cc26xx_demo_process);
@@ -169,7 +189,7 @@ get_bmp_reading()
   ctimer_set(&bmp_timer, next, init_bmp_reading, NULL);
 }
 /*---------------------------------------------------------------------------*/
-static int
+static void
 get_tmp_reading()
 {
   int value;
@@ -180,7 +200,7 @@ get_tmp_reading()
 
   if(value == CC26XX_SENSOR_READING_ERROR) {
     printf("TMP: Ambient Read Error\n");
-    return -1;
+    return;
   }
 
   value = tmp_007_sensor.value(TMP_007_SENSOR_TYPE_AMBIENT);
@@ -192,8 +212,6 @@ get_tmp_reading()
   SENSORS_DEACTIVATE(tmp_007_sensor);
 
   ctimer_set(&tmp_timer, next, init_tmp_reading, NULL);
-
-  return value;
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -354,28 +372,36 @@ init_sensor_readings(void)
   init_mpu_reading(NULL);
 #endif
 }
+
+static void
+init_sensor_cycle(void)
+{
+  init_tmp_reading(NULL);
+}
 /*---------------------------------------------------------------------------*/
 PROCESS_THREAD(cc26xx_demo_process, ev, data)
 {
-
   // For beacon advertisement
-  static int i;
   char adv_name[20];
+  static int counter;
+  /* char adv_sensor_data[20]; */
 
   PROCESS_BEGIN();
 
   printf("CC26XX demo\n");
 
-  /* init_sensors(); */
+  init_sensors();
 
   /* Init the BLE advertisement daemon */
-  rf_ble_beacond_config(0, ADV_NAME_BASE);
-  rf_ble_beacond_start();
+  /* rf_ble_beacond_config(0, ADV_NAME_BASE); */
+  /* rf_ble_beacond_start(); */
 
   etimer_set(&et, CC26XX_DEMO_LOOP_INTERVAL);
-  /* get_sync_sensor_readings(); */
-  /* init_sensor_readings(); */
 
+  get_sync_sensor_readings();
+  init_sensor_readings();
+
+  counter = 0;
   i = 0;
   while(1) {
 
@@ -383,71 +409,74 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
 
     if(ev == PROCESS_EVENT_TIMER) {
 
-      // Debug and increment i
-      printf("Advertising Name :: AndersSensortag_%i\n", ++i);
+      get_sync_sensor_readings();
 
-      // broadcast single data
-      char adv_data[10] = "Hello BLE";
-      rf_ble_beacon_single(BLE_ADV_CHANNEL_37, (uint8_t * ) adv_data, 10);
+      printf("Advertising Name :: AndersSensortag\n");
+      /* Parse the data to the payload */
 
-      // Parse the new name and set new adv name
-      sprintf(adv_name, ADV_NAME_BASE, i);
-      rf_ble_beacond_config(0, adv_name);
+      p = 0; // payload indexer
+      // device info
+      memset(payload, 0, BLE_ADV_PAYLOAD_BUF_LEN);
+      payload[p++] = 0x02;          /* 2 bytes */
+      payload[p++] = BLE_ADV_TYPE_DEVINFO;
+      payload[p++] = 0x1a;          /* LE general discoverable + BR/EDR */
+
+      // Sensordata
+
+      /* printf("hdc :: %i\n", hdc_1000_sensor.value(HDC_1000_SENSOR_TYPE_TEMP)); */
+      /* printf("hdc :: %i\n", hdc_1000_sensor.value(HDC_1000_SENSOR_TYPE_TEMP)); */
+      /* printf("mpu :: %i \n", mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_X)); */
+      /* printf("tmp :: %i\n", tmp_007_sensor.value(TMP_007_SENSOR_TYPE_ALL)); */
+      /* printf("opt :: %i \n", opt_3001_sensor.value(0)); */
+      /* printf("bmp :: %i\n", bmp_280_sensor.value(BMP_280_SENSOR_TYPE_TEMP)); */
+      payload[p++] = 1 + sizeof(int);
+      payload[p++] = BLE_ADV_TYPE_MANUFACTURER;
+      payload[p++] = 123;
+
+      /* memcpy(&payload[p], adv_sensor_data, */
+      /*        strlen(adv_sensor_data)); */
+      /* p += strlen(adv_sensor_data); */
+
+      // Name
+      sprintf(adv_name, ADV_NAME_BASE, counter);
+      payload[p++] = 1 + strlen(adv_name);
+      payload[p++] = BLE_ADV_TYPE_NAME;
+      memcpy(&payload[p], adv_name,
+            strlen(adv_name));
+      p += strlen(adv_name);
+
+      /*
+       * Send BLE_ADV_MESSAGES beacon bursts. Each burst on all three
+       * channels, with a BLE_ADV_DUTY_CYCLE interval between bursts
+       */
+      for(i = 0; i < BLE_ADV_MESSAGES; i++) {
+          rf_ble_beacon_single(BLE_ADV_CHANNEL_ALL, payload, p);
+          etimer_set(&adv_et, BLE_ADV_DUTY_CYCLE);
+          /* Wait unless this is the last burst */
+          if(i < BLE_ADV_MESSAGES - 1) {
+            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&adv_et));
+          }
+      }
 
       // Toggle the leds
       leds_toggle(CC26XX_DEMO_LEDS_PERIODIC);
 
       // reset the timer
       etimer_reset(&et);
+    } else if(ev == sensors_event) {
+      if(data == &bmp_280_sensor) {
+        get_bmp_reading();
+      } else if(data == &opt_3001_sensor) {
+        get_light_reading();
+      } else if(data == &hdc_1000_sensor) {
+        get_hdc_reading();
+      } else if(data == &tmp_007_sensor) {
+        get_tmp_reading();
+      } else if(data == &mpu_9250_sensor) {
+        get_mpu_reading();
+      }
     }
   }
-/*     if(ev == PROCESS_EVENT_TIMER) { */
-/*       if(data == &et) { */
-
-/*         get_sync_sensor_readings(); */
-
-/*         etimer_set(&et, CC26XX_DEMO_LOOP_INTERVAL); */
-/*       } */
-/*     } else if(ev == button_hal_periodic_event) { */
-/*       button_hal_button_t *button = data; */
-
-/*       printf("%s periodic event, duration %d seconds\n", */
-/*              BUTTON_HAL_GET_DESCRIPTION(button), */
-/*              button->press_duration_seconds); */
-/*     } else if(ev == button_hal_release_event) { */
-/*       button_hal_button_t *btn = (button_hal_button_t *)data; */
-
-/*       printf("%s release event\n", BUTTON_HAL_GET_DESCRIPTION(btn)); */
-
-/*       if(btn->unique_id== CC26XX_DEMO_TRIGGER_1) { */
-/*         leds_toggle(CC26XX_DEMO_LEDS_BUTTON); */
-/*       } else if(btn->unique_id == CC26XX_DEMO_TRIGGER_2) { */
-/*         leds_on(CC26XX_DEMO_LEDS_REBOOT); */
-/*         watchdog_reboot(); */
-/* #if BOARD_SENSORTAG */
-/*       } else if(btn->unique_id == CC26XX_DEMO_TRIGGER_3) { */
-/*         if(buzzer_state()) { */
-/*           buzzer_stop(); */
-/*         } else { */
-/*           buzzer_start(1000); */
-/*         } */
-/*       } */
-/*     } else if(ev == sensors_event) { */
-/*       if(data == &bmp_280_sensor) { */
-/*         get_bmp_reading(); */
-/*       } else if(data == &opt_3001_sensor) { */
-/*         get_light_reading(); */
-/*       } else if(data == &hdc_1000_sensor) { */
-/*         get_hdc_reading(); */
-/*       } else if(data == &tmp_007_sensor) { */
-/*         get_tmp_reading(); */
-/*       } else if(data == &mpu_9250_sensor) { */
-/*         get_mpu_reading(); */
-/* #endif */
-/*       } */
-/*     } */
-/*   } */
-
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/

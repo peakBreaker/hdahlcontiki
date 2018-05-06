@@ -19,7 +19,7 @@ ngmake()
         ngmakeclean $APP
         ngmakeDebuggerXDS110 "application.hex" $APP
 
-        nglogin()
+        nglogin
 }
 
 nglogin()
