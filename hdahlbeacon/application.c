@@ -95,10 +95,7 @@
 #include <string.h>
 
 /*---------------------------------------------------------------------------*/
-#define ADV_NAME_BASE "AndersSensortag_%i"
-
-/*---------------------------------------------------------------------------*/
-#define CC26XX_DEMO_LOOP_INTERVAL       (CLOCK_SECOND * 20)
+#define CC26XX_DEMO_LOOP_INTERVAL       (CLOCK_SECOND * 50)
 #define CC26XX_DEMO_LEDS_PERIODIC       LEDS_YELLOW
 #define CC26XX_DEMO_LEDS_BUTTON         LEDS_RED
 #define CC26XX_DEMO_LEDS_REBOOT         LEDS_ALL
@@ -131,6 +128,13 @@ static struct etimer adv_et;
 static uint8_t payload[HD_BLE_ADV_PAYLOAD_LEN];
 static int p = 0;
 static int i;
+
+typedef struct acc_vals {
+    int x_val;
+    int y_val;
+    int z_val;
+} acc_vals;
+
 /*---------------------------------------------------------------------------*/
 PROCESS(cc26xx_demo_process, "cc26xx demo process");
 AUTOSTART_PROCESSES(&cc26xx_demo_process);
@@ -256,46 +260,53 @@ get_light_reading()
   ctimer_set(&opt_timer, next, init_opt_reading, NULL);
 }
 /*---------------------------------------------------------------------------*/
-static void
+static acc_vals
 get_mpu_reading()
 {
+  acc_vals local_accels = {}; // The return object
   int value;
   clock_time_t next = SENSOR_READING_PERIOD +
     (random_rand() % SENSOR_READING_RANDOM);
 
-  printf("MPU Gyro: X=");
-  value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_X);
-  print_mpu_reading(value);
-  printf(" deg/sec\n");
+  /* printf("MPU Gyro: X="); */
+  /* value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_X); */
+  /* print_mpu_reading(value); */
+  /* printf(" deg/sec\n"); */
 
-  printf("MPU Gyro: Y=");
-  value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Y);
-  print_mpu_reading(value);
-  printf(" deg/sec\n");
+  /* printf("MPU Gyro: Y="); */
+  /* value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Y); */
+  /* print_mpu_reading(value); */
+  /* printf(" deg/sec\n"); */
 
-  printf("MPU Gyro: Z=");
-  value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Z);
-  print_mpu_reading(value);
-  printf(" deg/sec\n");
+  /* printf("MPU Gyro: Z="); */
+  /* value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Z); */
+  /* print_mpu_reading(value); */
+  /* printf(" deg/sec\n"); */
 
   printf("MPU Acc: X=");
   value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_ACC_X);
+  local_accels.x_val = value;
   print_mpu_reading(value);
   printf(" G\n");
 
   printf("MPU Acc: Y=");
   value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_ACC_Y);
+  local_accels.y_val = value;
   print_mpu_reading(value);
   printf(" G\n");
 
   printf("MPU Acc: Z=");
   value = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_ACC_Z);
+  local_accels.z_val = value;
   print_mpu_reading(value);
   printf(" G\n");
 
   SENSORS_DEACTIVATE(mpu_9250_sensor);
 
   ctimer_set(&mpu_timer, next, init_mpu_reading, NULL);
+
+  // Finally deactivate the sensor, and return the struct
+  return local_accels;
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -324,8 +335,8 @@ init_tmp_reading(void *not_used)
 /*---------------------------------------------------------------------------*/
 static void
 init_mpu_reading(void *not_used)
-{
-  mpu_9250_sensor.configure(SENSORS_ACTIVE, MPU_9250_SENSOR_TYPE_ALL);
+{ //   MPU_9250_SENSOR_TYPE_ACC
+  mpu_9250_sensor.configure(SENSORS_ACTIVE,MPU_9250_SENSOR_TYPE_ALL);
 }
 #endif
 /*---------------------------------------------------------------------------*/
@@ -384,6 +395,7 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
   // For beacon advertisement
   char adv_name[20];
   static int counter;
+  static acc_vals acc_sensor_values;
   /* char adv_sensor_data[20]; */
 
   PROCESS_BEGIN();
@@ -399,7 +411,8 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
   etimer_set(&et, CC26XX_DEMO_LOOP_INTERVAL);
 
   get_sync_sensor_readings();
-  init_sensor_readings();
+  /* init_sensor_readings(); */
+  init_mpu_reading(NULL);
 
   counter = 0;
   i = 0;
@@ -409,7 +422,7 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
 
     if(ev == PROCESS_EVENT_TIMER) {
 
-      get_sync_sensor_readings();
+      /* get_sync_sensor_readings(); */
 
       printf("Advertising Name :: AndersSensortag\n");
       /* Parse the data to the payload */
@@ -429,13 +442,33 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
       /* printf("tmp :: %i\n", tmp_007_sensor.value(TMP_007_SENSOR_TYPE_ALL)); */
       /* printf("opt :: %i \n", opt_3001_sensor.value(0)); */
       /* printf("bmp :: %i\n", bmp_280_sensor.value(BMP_280_SENSOR_TYPE_TEMP)); */
-      payload[p++] = 1 + sizeof(int);
-      payload[p++] = BLE_ADV_TYPE_MANUFACTURER;
-      payload[p++] = 123;
+      /* acc_sensor_values = get_mpu_reading(); */
+      
+      acc_sensor_values.x_val = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_X);
+      acc_sensor_values.y_val = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Y);
+      acc_sensor_values.z_val = mpu_9250_sensor.value(MPU_9250_SENSOR_TYPE_GYRO_Z);
 
-      /* memcpy(&payload[p], adv_sensor_data, */
-      /*        strlen(adv_sensor_data)); */
-      /* p += strlen(adv_sensor_data); */
+      printf("x valus :: %x, y value :: %x, z value :: %x \n",
+             acc_sensor_values.x_val,
+             acc_sensor_values.y_val,
+             acc_sensor_values.z_val);
+
+      char s_vals[200];
+      sprintf(s_vals, "%i,%i,%i",
+              acc_sensor_values.x_val,
+              acc_sensor_values.y_val,
+              acc_sensor_values.z_val);
+      printf("sending values %s", s_vals);
+
+      payload[p++] = 1 + strlen(s_vals);
+      payload[p++] = BLE_ADV_TYPE_MANUFACTURER;
+      memcpy(&payload[p], s_vals, strlen(s_vals));
+      p += strlen(s_vals);
+      /* p+=sizeof(int); */
+      /* payload[p] = acc_sensor_values.y_val; */
+      /* p+=sizeof(int); */
+      /* payload[p] = acc_sensor_values.z_val; */
+      /* p+=sizeof(int); */
 
       // Name
       sprintf(adv_name, ADV_NAME_BASE, counter);
@@ -463,19 +496,19 @@ PROCESS_THREAD(cc26xx_demo_process, ev, data)
 
       // reset the timer
       etimer_reset(&et);
-    } else if(ev == sensors_event) {
-      if(data == &bmp_280_sensor) {
-        get_bmp_reading();
-      } else if(data == &opt_3001_sensor) {
-        get_light_reading();
-      } else if(data == &hdc_1000_sensor) {
-        get_hdc_reading();
-      } else if(data == &tmp_007_sensor) {
-        get_tmp_reading();
-      } else if(data == &mpu_9250_sensor) {
-        get_mpu_reading();
-      }
-    }
+    } /* else if(ev == sensors_event)  { */
+    /*   if(data == &bmp_280_sensor) { */
+    /*     get_bmp_reading(); */
+    /*   } else if(data == &opt_3001_sensor) { */
+    /*     get_light_reading(); */
+    /*   } else if(data == &hdc_1000_sensor) { */
+    /*     get_hdc_reading(); */
+    /*   } else if(data == &tmp_007_sensor) { */
+    /*     get_tmp_reading(); */
+    /*   } else if(data == &mpu_9250_sensor) { */
+    /*     get_mpu_reading(); */
+    /*   } */
+    /* } */
   }
   PROCESS_END();
 }
